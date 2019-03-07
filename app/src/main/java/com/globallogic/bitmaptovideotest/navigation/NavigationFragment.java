@@ -1,12 +1,9 @@
 package com.globallogic.bitmaptovideotest.navigation;
 
-import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.graphics.Bitmap;
 import android.location.Location;
 import android.os.Bundle;
-import android.os.Environment;
 import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
@@ -36,11 +33,6 @@ import com.mapbox.services.android.navigation.v5.navigation.NavigationRoute;
 import com.mapbox.services.android.navigation.v5.routeprogress.ProgressChangeListener;
 import com.mapbox.services.android.navigation.v5.routeprogress.RouteProgress;
 import com.mapbox.services.android.navigation.v5.routeprogress.RouteProgressState;
-
-import java.io.File;
-import java.io.FileOutputStream;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 
 import retrofit2.Call;
 import retrofit2.Response;
@@ -243,13 +235,10 @@ public class NavigationFragment extends Fragment implements OnNavigationReadyCal
 
   @Override
   public void onMilestoneEvent(RouteProgress routeProgress, String instruction, Milestone milestone) {
-    Log.w(TAG, "onMilestoneEvent: "+counter );
   }
 
 
   private void startSnapShot() {
-    //Log.w(TAG, "startSnapShot: navigationView.getWidth()="+navigationView.getWidth()+ "h="+navigationView.getHeight() );
-    //Log.w(TAG, "startSnapShot: navigationView.getMeasuredWidth()="+navigationView.getMeasuredWidth()+ "Measured h="+navigationView.getMeasuredHeight() );
     if(isSnapshotReady) {
       if (mapSnapshotter == null) {
         MapSnapshotter.Options options =
@@ -272,11 +261,9 @@ public class NavigationFragment extends Fragment implements OnNavigationReadyCal
       mapSnapshotter.start(new MapSnapshotter.SnapshotReadyCallback() {
         @Override
         public void onSnapshotReady(MapSnapshot snapshot) {
-          //Log.w(TAG, "onSnapshotReady: snapshot.getBitmap().getWidth()="+snapshot.getBitmap().getWidth()+ "h="+snapshot.getBitmap().getHeight() );
           if(getBitmapToVideoEncoder()!=null && getBitmapToVideoEncoder().isEncodingStarted()){
             getBitmapToVideoEncoder().queueFrame(snapshot.getBitmap());
           }
-          //saveImage(snapshot.getBitmap());
           Log.w(TAG, "onSnapshotReady: " );
           isSnapshotReady=true;
         }
@@ -288,30 +275,5 @@ public class NavigationFragment extends Fragment implements OnNavigationReadyCal
 
   private BitmapToVideoEncoder getBitmapToVideoEncoder(){
     return ((NavigationActivity)getActivity()).bitmapToVideoEncoder;
-  }
-
-
-  @SuppressLint("LogNotTimber")
-  private void saveImage(Bitmap finalBitmap) {
-    String root = Environment.getExternalStorageDirectory().toString();
-    File myDir = new File(root + "/saved_images");
-    myDir.mkdirs();
-
-    String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-    String fname = "Shutta_"+ timeStamp +".jpg";
-
-    File file = new File(myDir, fname);
-    File parentDir = file.getParentFile();
-    if (file.exists()) file.delete ();
-
-    try {
-      FileOutputStream out = new FileOutputStream(file);
-      finalBitmap.compress(Bitmap.CompressFormat.JPEG, 100, out);
-      out.flush();
-      out.close();
-      Log.w(TAG, "bitmap saved"+file.getAbsolutePath());
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
   }
 }
