@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">BitmapToVideoTest</string>
+    <string name="was_navigation_stopped">nav  stopped</string>
+</resources>
