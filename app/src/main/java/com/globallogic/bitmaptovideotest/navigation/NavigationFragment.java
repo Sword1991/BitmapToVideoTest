@@ -2,7 +2,6 @@ package com.globallogic.bitmaptovideotest.navigation;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.graphics.Bitmap;
 import android.location.Location;
 import android.opengl.GLException;
 import android.opengl.GLSurfaceView;
@@ -58,7 +57,7 @@ public class NavigationFragment extends Fragment implements OnNavigationReadyCal
 
     private interface BitmapReadyCallbacks {
 
-        void onBitmapReady(Bitmap bitmap);
+        void onBitmapReady(int[] argb);
     }
 
     private static final String TAG = "NavigationFragment";
@@ -300,9 +299,9 @@ public class NavigationFragment extends Fragment implements OnNavigationReadyCal
             bitmapReady=false;
             captureBitmap(glSurfaceView, new BitmapReadyCallbacks() {
                 @Override
-                public void onBitmapReady(Bitmap bitmap) {
+                public void onBitmapReady(int[] argb) {
                     //Log.w(TAG, "onBitmapReady: ");
-                    bitmapToVideoEncoder.queueFrame(bitmap);
+                    bitmapToVideoEncoder.queueFrame(argb);
                     bitmapReady=true;
                 }
             });
@@ -316,8 +315,8 @@ public class NavigationFragment extends Fragment implements OnNavigationReadyCal
             public void run() {
                 EGL10 egl = (EGL10) EGLContext.getEGL();
                 GL10 gl = (GL10) egl.eglGetCurrentContext().getGL();
-                final Bitmap snapshotBitmap = createBitmapFromGLSurface(0, 0, glSurfaceView.getWidth(), glSurfaceView.getHeight(), gl);
-                bitmapReadyCallbacks.onBitmapReady(snapshotBitmap);
+                //final Bitmap snapshotBitmap = createBitmapFromGLSurface(0, 0, glSurfaceView.getWidth(), glSurfaceView.getHeight(), gl);
+                bitmapReadyCallbacks.onBitmapReady(createBitmapFromGLSurface(0, 0, glSurfaceView.getWidth(), glSurfaceView.getHeight(), gl));
                 /*getActivity().runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
@@ -328,7 +327,7 @@ public class NavigationFragment extends Fragment implements OnNavigationReadyCal
         });
     }
 
-    private Bitmap createBitmapFromGLSurface(int x, int y, int w, int h, GL10 gl) {
+    private int[] createBitmapFromGLSurface(int x, int y, int w, int h, GL10 gl) {
 
         int bitmapBuffer[] = new int[w * h];
         int bitmapSource[] = new int[w * h];
@@ -354,7 +353,7 @@ public class NavigationFragment extends Fragment implements OnNavigationReadyCal
             return null;
         }
 
-        return Bitmap.createBitmap(bitmapSource, w, h, Bitmap.Config.ARGB_8888);
+        return bitmapSource;
     }
 
     private void sendTestMessage(final String messageStr){

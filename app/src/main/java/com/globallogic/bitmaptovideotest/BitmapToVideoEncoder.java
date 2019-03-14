@@ -1,6 +1,5 @@
 package com.globallogic.bitmaptovideotest;
 
-import android.graphics.Bitmap;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaCodecList;
@@ -25,7 +24,7 @@ public class BitmapToVideoEncoder {
     private final Handler mHandler;
 
     private IBitmapToVideoEncoderCallback mCallback;
-    private Queue<Bitmap> mEncodeQueue = new ConcurrentLinkedQueue();
+    private Queue<int[]> mEncodeQueue = new ConcurrentLinkedQueue();
     private MediaCodec mVideoEncoder;
 
     private Object mFrameSync = new Object();
@@ -141,14 +140,14 @@ public class BitmapToVideoEncoder {
         }
     }
 
-    public void queueFrame(Bitmap bitmap) {
+    public void queueFrame(int[] argb) {
         if (mVideoEncoder == null  || mSocketOutputStream == null) {
             Log.d(TAG, "Failed to queue frame. Encoding not started");
             return;
         }
 
         Log.d(TAG, "Queueing frame");
-        mEncodeQueue.add(bitmap);
+        mEncodeQueue.add(argb);
 
         synchronized (mFrameSync) {
             if ((mNewFrameLatch != null) && (mNewFrameLatch.getCount() > 0)) {
@@ -164,8 +163,8 @@ public class BitmapToVideoEncoder {
         while(true) {
             if (mNoMoreFrames && (mEncodeQueue.size() ==  0)) break;
 
-            Bitmap bitmap = mEncodeQueue.poll();
-            if (bitmap ==  null) {
+            int[] argb = mEncodeQueue.poll();
+            if (argb ==  null) {
                 synchronized (mFrameSync) {
                     mNewFrameLatch = new CountDownLatch(1);
                 }
@@ -174,11 +173,11 @@ public class BitmapToVideoEncoder {
                     mNewFrameLatch.await();
                 } catch (InterruptedException e) {}
 
-                bitmap = mEncodeQueue.poll();
+                argb = mEncodeQueue.poll();
             }
 
-            if (bitmap == null) continue;
-            byte[] byteConvertFrame = getNV21(bitmap.getWidth(), bitmap.getHeight(), bitmap);
+            if (argb == null) continue;
+            byte[] byteConvertFrame = getNV21(mWidth, mHeight, argb);
 
             long TIMEOUT_USEC = 500000;
             int inputBufIndex = mVideoEncoder.dequeueInputBuffer(TIMEOUT_USEC);
@@ -299,16 +298,16 @@ public class BitmapToVideoEncoder {
         }
     }
 
-    private byte[] getNV21(int inputWidth, int inputHeight, Bitmap scaled) {
+    private byte[] getNV21(int inputWidth, int inputHeight, int[] argb) {
 
-        int[] argb = new int[inputWidth * inputHeight];
+        //int[] argb = new int[inputWidth * inputHeight];
 
-        scaled.getPixels(argb, 0, inputWidth, 0, 0, inputWidth, inputHeight);
+        //scaled.getPixels(argb, 0, inputWidth, 0, 0, inputWidth, inputHeight);
 
         byte[] yuv = new byte[inputWidth * inputHeight * 3 / 2];
         encodeYUV420SP(yuv, argb, inputWidth, inputHeight);
 
-        scaled.recycle();
+        //scaled.recycle();
 
         return yuv;
     }
