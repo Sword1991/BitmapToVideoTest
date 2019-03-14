@@ -7,6 +7,7 @@ import android.location.Location;
 import android.opengl.GLException;
 import android.opengl.GLSurfaceView;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
@@ -17,10 +18,9 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 
-import com.globallogic.bitmaptovideotest.BitmapToVideoEncoder;
 import com.globallogic.bitmaptovideotest.Config;
 import com.globallogic.bitmaptovideotest.R;
-import com.globallogic.bitmaptovideotest.SocketHelper;
+import com.globallogic.bitmaptovideotest.TestBtVEncoder;
 import com.mapbox.api.directions.v5.models.DirectionsResponse;
 import com.mapbox.api.directions.v5.models.DirectionsRoute;
 import com.mapbox.geojson.Point;
@@ -37,6 +37,7 @@ import com.mapbox.services.android.navigation.v5.routeprogress.ProgressChangeLis
 import com.mapbox.services.android.navigation.v5.routeprogress.RouteProgress;
 import com.mapbox.services.android.navigation.v5.routeprogress.RouteProgressState;
 
+import java.io.File;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -49,12 +50,10 @@ import javax.microedition.khronos.opengles.GL10;
 import retrofit2.Call;
 import retrofit2.Response;
 
-public class NavigationFragment extends Fragment implements OnNavigationReadyCallback, NavigationListener,
+public class FragmentWriteToFile extends Fragment implements OnNavigationReadyCallback, NavigationListener,
         ProgressChangeListener, MilestoneEventListener {
 
-    private MapView mapView;
-    private boolean bitmapReady=true;
-    private GLSurfaceView glSurfaceView;
+    private int counter=0;
 
     private interface BitmapReadyCallbacks {
 
@@ -75,8 +74,7 @@ public class NavigationFragment extends Fragment implements OnNavigationReadyCal
     private DirectionsRoute directionsRoute;
 
     private Handler mHandler = new Handler();
-    private SocketHelper socketHelper;
-    private BitmapToVideoEncoder bitmapToVideoEncoder;
+    private TestBtVEncoder bitmapToVideoEncoder;
 
 
     @Nullable
@@ -92,15 +90,14 @@ public class NavigationFragment extends Fragment implements OnNavigationReadyCal
         navigationView = view.findViewById(R.id.navigation_view_fragment);
         navigationView.onCreate(savedInstanceState);
         navigationView.initialize(this);
-        socketHelper=new SocketHelper();
 
-        bitmapToVideoEncoder = new BitmapToVideoEncoder(new BitmapToVideoEncoder.IBitmapToVideoEncoderCallback() {
+        bitmapToVideoEncoder = new TestBtVEncoder(new TestBtVEncoder.IBitmapToVideoEncoderCallback() {
             @Override
-            public void onEncodingComplete() {
+            public void onEncodingComplete(File outputFile) {
 
-                Log.w(TAG, "onEncodingComplete: " );
+                Log.w(TAG, "onEncodingComplete: outputFile="+outputFile );
             }
-        }, mHandler);
+        });
     }
 
     @Override
@@ -157,7 +154,7 @@ public class NavigationFragment extends Fragment implements OnNavigationReadyCal
     public void onDestroy() {
         super.onDestroy();
 
-        stopEncoding();
+        //stopEncoding();
     }
 
     @Override
@@ -176,29 +173,31 @@ public class NavigationFragment extends Fragment implements OnNavigationReadyCal
                 Log.w(TAG, "soundButton clicked" );
             }
         });
-        mapView = navigationView.findViewById(com.mapbox.services.android.navigation.ui.v5.R.id.navigationMapView);
-        glSurfaceView = (GLSurfaceView) mapView.getChildAt(0);
         startEncoding();
-        mapView.addOnCameraDidChangeListener(new MapView.OnCameraDidChangeListener() {
-            @Override
-            public void onCameraDidChange(boolean animated) {
-                startSnapShot();
-            }
-        });
-
 
     }
 
     private void startEncoding(){
-        if (!socketHelper.createSocket()) {
-            Log.e(TAG, "Failed to create socket to receiver, ip: " + SocketHelper.mReceiverIp);
-        }
-        bitmapToVideoEncoder.startEncoding(Config.SELECTED_WIDTH, Config.SELECTED_HEIGHT, socketHelper.mSocketOutputStream);
+
+        bitmapToVideoEncoder.startEncoding(Config.SELECTED_WIDTH, Config.SELECTED_HEIGHT,getOutputFile());
+    }
+
+    private File getOutputFile() {
+        String dir = Environment.getExternalStorageDirectory()+File.separator+"saved_images";
+        //create folder
+        File folder = new File(dir); //folder name
+        folder.mkdirs();
+
+        //create file
+
+        File file = new File(dir, "video.mp4");
+        if(file.exists()) file.delete();
+        return file;
     }
 
     private void stopEncoding(){
         bitmapToVideoEncoder.stopEncoding();
-        socketHelper.closeSocket();
+
     }
 
     @Override
@@ -229,7 +228,7 @@ public class NavigationFragment extends Fragment implements OnNavigationReadyCal
             AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
             getActivity().recreate();
         }*/
-        //startSnapShot();
+        startSnapShot();
     }
 
     private void fetchRoute(Point origin, Point destination) {
@@ -255,7 +254,7 @@ public class NavigationFragment extends Fragment implements OnNavigationReadyCal
 
                 .directionsRoute(directionsRoute)
                 .shouldSimulateRoute(true)
-                .navigationListener(NavigationFragment.this)
+                .navigationListener(FragmentWriteToFile.this)
                 .progressChangeListener(this)
                 .milestoneEventListener(this)
                 .build();
@@ -285,28 +284,34 @@ public class NavigationFragment extends Fragment implements OnNavigationReadyCal
     public void onMilestoneEvent(RouteProgress routeProgress, String instruction, Milestone milestone) {
         if(instruction!=null && instruction.length()>0) {
             sendTestMessage(instruction);
+            Log.d(TAG, "onMilestoneEvent: "+counter );
+            if(++counter>10){
+                stopEncoding();
+            }
         }
+
 
     }
 
 
     private void startSnapShot() {
+        Log.w(TAG, "startSnapshot");
         if(bitmapToVideoEncoder==null || !bitmapToVideoEncoder.isEncodingStarted()){
             Log.w(TAG, "startSnapShot: NOT READY YET" );
             return;
         }
+        MapView mapView = navigationView.findViewById(com.mapbox.services.android.navigation.ui.v5.R.id.navigationMapView);
 
-        if(bitmapReady) {
-            bitmapReady=false;
-            captureBitmap(glSurfaceView, new BitmapReadyCallbacks() {
-                @Override
-                public void onBitmapReady(Bitmap bitmap) {
-                    //Log.w(TAG, "onBitmapReady: ");
+        GLSurfaceView glSurfaceView = (GLSurfaceView) mapView.getChildAt(0);
+        captureBitmap(glSurfaceView, new BitmapReadyCallbacks() {
+            @Override
+            public void onBitmapReady(Bitmap bitmap) {
+                Log.w(TAG, "onBitmapReady: " );
+                if(bitmapToVideoEncoder.isEncodingStarted()){
                     bitmapToVideoEncoder.queueFrame(bitmap);
-                    bitmapReady=true;
                 }
-            });
-        }//else Log.w(TAG, "startSnapShot: BITMAP NOT READY" );
+            }
+        });
     }
 
 
@@ -317,13 +322,13 @@ public class NavigationFragment extends Fragment implements OnNavigationReadyCal
                 EGL10 egl = (EGL10) EGLContext.getEGL();
                 GL10 gl = (GL10) egl.eglGetCurrentContext().getGL();
                 final Bitmap snapshotBitmap = createBitmapFromGLSurface(0, 0, glSurfaceView.getWidth(), glSurfaceView.getHeight(), gl);
-                bitmapReadyCallbacks.onBitmapReady(snapshotBitmap);
-                /*getActivity().runOnUiThread(new Runnable() {
+
+                getActivity().runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-
+                        bitmapReadyCallbacks.onBitmapReady(snapshotBitmap);
                     }
-                });*/
+                });
             }
         });
     }

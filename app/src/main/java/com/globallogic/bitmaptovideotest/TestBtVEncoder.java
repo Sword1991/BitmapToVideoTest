@@ -5,11 +5,11 @@ import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaCodecList;
 import android.media.MediaFormat;
-import android.os.Handler;
+import android.media.MediaMuxer;
 import android.util.Log;
 
+import java.io.File;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -19,57 +19,59 @@ import io.reactivex.Completable;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.schedulers.Schedulers;
 
-
-public class BitmapToVideoEncoder {
-    private static final String TAG = BitmapToVideoEncoder.class.getSimpleName();
-    private final Handler mHandler;
+public class TestBtVEncoder {
+    private static final String TAG = TestBtVEncoder.class.getSimpleName();
 
     private IBitmapToVideoEncoderCallback mCallback;
+    private File mOutputFile;
     private Queue<Bitmap> mEncodeQueue = new ConcurrentLinkedQueue();
-    private MediaCodec mVideoEncoder;
+    private MediaCodec mediaCodec;
+    private MediaMuxer mediaMuxer;
 
     private Object mFrameSync = new Object();
     private CountDownLatch mNewFrameLatch;
 
-    public static final String MIME_TYPE = "video/avc"; // H.264 Advanced Video Coding
-    public static int mWidth;
-    public static int mHeight;
-    public static final int BIT_RATE = 4000000;
-    public static final int FRAME_RATE = 10; // Frames per second
+    private static final String MIME_TYPE = "video/avc"; // H.264 Advanced Video Coding
+    private static int mWidth;
+    private static int mHeight;
+    private static final int BIT_RATE = 16000000;
+    private static final int FRAME_RATE = 30; // Frames per second
 
-    public static final int I_FRAME_INTERVAL = 1;
+    private static final int I_FRAME_INTERVAL = 1;
 
     private int mGenerateIndex = 0;
+    private int mTrackIndex;
     private boolean mNoMoreFrames = false;
     private boolean mAbort = false;
-    private OutputStream mSocketOutputStream;
-    private Runnable mWriteDataRunnable;
-
 
     public interface IBitmapToVideoEncoderCallback {
-        void onEncodingComplete();
+        void onEncodingComplete(File outputFile);
     }
 
-    public BitmapToVideoEncoder(IBitmapToVideoEncoderCallback callback, Handler handler) {
+    public TestBtVEncoder(IBitmapToVideoEncoderCallback callback) {
         mCallback = callback;
-        mHandler=handler;
-
     }
 
     public boolean isEncodingStarted() {
-        return (mVideoEncoder != null) && (mSocketOutputStream != null) && !mNoMoreFrames && !mAbort;
+        return (mediaCodec != null) && (mediaMuxer != null) && !mNoMoreFrames && !mAbort;
     }
 
     public int getActiveBitmaps() {
         return mEncodeQueue.size();
     }
 
-    public void startEncoding(int width, int height, OutputStream outputStream) {
+    public void startEncoding(int width, int height, File outputFile) {
         mWidth = width;
         mHeight = height;
+        mOutputFile = outputFile;
 
-        mSocketOutputStream = outputStream;
-
+        String outputFileString;
+        try {
+            outputFileString = outputFile.getCanonicalPath();
+        } catch (IOException e) {
+            Log.e(TAG, "Unable to get path for " + outputFile);
+            return;
+        }
 
         MediaCodecInfo codecInfo = selectCodec(MIME_TYPE);
         if (codecInfo == null) {
@@ -81,11 +83,11 @@ public class BitmapToVideoEncoder {
         try {
             colorFormat = selectColorFormat(codecInfo, MIME_TYPE);
         } catch (Exception e) {
-            colorFormat = MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Planar;
+            colorFormat = MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar;
         }
 
         try {
-            mVideoEncoder = MediaCodec.createByCodecName(codecInfo.getName());
+            mediaCodec = MediaCodec.createByCodecName(codecInfo.getName());
         } catch (IOException e) {
             Log.e(TAG, "Unable to create MediaCodec " + e.getMessage());
             return;
@@ -96,8 +98,14 @@ public class BitmapToVideoEncoder {
         mediaFormat.setInteger(MediaFormat.KEY_FRAME_RATE, FRAME_RATE);
         mediaFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, colorFormat);
         mediaFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, I_FRAME_INTERVAL);
-        mVideoEncoder.configure(mediaFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-        mVideoEncoder.start();
+        mediaCodec.configure(mediaFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+        mediaCodec.start();
+        try {
+            mediaMuxer = new MediaMuxer(outputFileString, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+        } catch (IOException e) {
+            Log.e(TAG,"MediaMuxer creation failed. " + e.getMessage());
+            return;
+        }
 
         Log.d(TAG, "Initialization complete. Starting encoder...");
 
@@ -108,7 +116,7 @@ public class BitmapToVideoEncoder {
     }
 
     public void stopEncoding() {
-        if (mVideoEncoder == null  || mSocketOutputStream == null ) {
+        if (mediaCodec == null || mediaMuxer == null) {
             Log.d(TAG, "Failed to stop encoding since it never started");
             return;
         }
@@ -124,7 +132,7 @@ public class BitmapToVideoEncoder {
     }
 
     public void abortEncoding() {
-        if (mVideoEncoder == null  || mSocketOutputStream == null) {
+        if (mediaCodec == null || mediaMuxer == null) {
             Log.d(TAG, "Failed to abort encoding since it never started");
             return;
         }
@@ -142,7 +150,7 @@ public class BitmapToVideoEncoder {
     }
 
     public void queueFrame(Bitmap bitmap) {
-        if (mVideoEncoder == null  || mSocketOutputStream == null) {
+        if (mediaCodec == null || mediaMuxer == null) {
             Log.d(TAG, "Failed to queue frame. Encoding not started");
             return;
         }
@@ -178,42 +186,40 @@ public class BitmapToVideoEncoder {
             }
 
             if (bitmap == null) continue;
+
             byte[] byteConvertFrame = getNV21(bitmap.getWidth(), bitmap.getHeight(), bitmap);
 
             long TIMEOUT_USEC = 500000;
-            int inputBufIndex = mVideoEncoder.dequeueInputBuffer(TIMEOUT_USEC);
-            //Log.w(TAG, "encode: inputBufIndex="+inputBufIndex );
+            int inputBufIndex = mediaCodec.dequeueInputBuffer(TIMEOUT_USEC);
             long ptsUsec = computePresentationTime(mGenerateIndex, FRAME_RATE);
             if (inputBufIndex >= 0) {
-                final ByteBuffer inputBuffer = mVideoEncoder.getInputBuffer(inputBufIndex);
-
+                final ByteBuffer inputBuffer = mediaCodec.getInputBuffer(inputBufIndex);
                 inputBuffer.clear();
                 inputBuffer.put(byteConvertFrame);
-                mVideoEncoder.queueInputBuffer(inputBufIndex, 0, byteConvertFrame.length, ptsUsec, 0);
+                mediaCodec.queueInputBuffer(inputBufIndex, 0, byteConvertFrame.length, ptsUsec, 0);
                 mGenerateIndex++;
             }
             MediaCodec.BufferInfo mBufferInfo = new MediaCodec.BufferInfo();
-            int encoderStatus = mVideoEncoder.dequeueOutputBuffer(mBufferInfo, TIMEOUT_USEC);
+            int encoderStatus = mediaCodec.dequeueOutputBuffer(mBufferInfo, TIMEOUT_USEC);
             if (encoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
                 // no output available yet
                 Log.e(TAG, "No output from encoder available");
             } else if (encoderStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-
-                Log.e(TAG, "INFO_OUTPUT_FORMAT_CHANGED not expected for an encoder");
+                // not expected for an encoder
+                MediaFormat newFormat = mediaCodec.getOutputFormat();
+                mTrackIndex = mediaMuxer.addTrack(newFormat);
+                mediaMuxer.start();
             } else if (encoderStatus < 0) {
                 Log.e(TAG, "unexpected result from encoder.dequeueOutputBuffer: " + encoderStatus);
             } else if (mBufferInfo.size != 0) {
-                ByteBuffer encodedData = mVideoEncoder.getOutputBuffer(encoderStatus);
+                ByteBuffer encodedData = mediaCodec.getOutputBuffer(encoderStatus);
                 if (encodedData == null) {
                     Log.e(TAG, "encoderOutputBuffer " + encoderStatus + " was null");
                 } else {
                     encodedData.position(mBufferInfo.offset);
                     encodedData.limit(mBufferInfo.offset + mBufferInfo.size);
-                    int size = encodedData.remaining();
-                    final byte[] buffer = new byte[size];
-                    encodedData.get(buffer);
-                    writeSampleData(buffer, 0, size);
-                    mVideoEncoder.releaseOutputBuffer(encoderStatus, false);
+                    mediaMuxer.writeSampleData(mTrackIndex, encodedData, mBufferInfo);
+                    mediaCodec.releaseOutputBuffer(encoderStatus, false);
                 }
             }
         }
@@ -221,37 +227,24 @@ public class BitmapToVideoEncoder {
         release();
 
         if (mAbort) {
-            Log.w(TAG, "encode: abort" );
+            mOutputFile.delete();
         } else {
-            mCallback.onEncodingComplete();
+            mCallback.onEncodingComplete(mOutputFile);
         }
     }
 
-    private void writeSampleData(final byte[] buffer, final int offset, final int size) {
-        mWriteDataRunnable=new Runnable() {
-            @Override
-            public void run() {
-                if (mSocketOutputStream != null) {
-                    try {
-                        mSocketOutputStream.write(buffer, offset, size);
-                    } catch (IOException e) {
-                        Log.e(TAG, "Failed to write data to socket, stop casting",e);
-                        e.printStackTrace();
-                    }
-                }else {
-                    Log.e(TAG, "writeSampleData: socket null" );
-                }
-            }
-        };
-        mHandler.post(mWriteDataRunnable);
-    }
-
     private void release() {
-        if (mVideoEncoder != null) {
-            mVideoEncoder.stop();
-            mVideoEncoder.release();
-            mVideoEncoder = null;
+        if (mediaCodec != null) {
+            mediaCodec.stop();
+            mediaCodec.release();
+            mediaCodec = null;
             Log.d(TAG,"RELEASE CODEC");
+        }
+        if (mediaMuxer != null) {
+            mediaMuxer.stop();
+            mediaMuxer.release();
+            mediaMuxer = null;
+            Log.d(TAG,"RELEASE MUXER");
         }
     }
 
@@ -315,18 +308,16 @@ public class BitmapToVideoEncoder {
 
     private void encodeYUV420SP(byte[] yuv420sp, int[] argb, int width, int height) {
         final int frameSize = width * height;
-        final int chromaSize = frameSize / 4;
 
         int yIndex = 0;
-        int uIndex = frameSize;
-        int vIndex = frameSize + chromaSize;
+        int uvIndex = frameSize;
 
         int a, R, G, B, Y, U, V;
         int index = 0;
         for (int j = 0; j < height; j++) {
             for (int i = 0; i < width; i++) {
 
-                //a = (argb[index] & 0xff000000) >> 24; // a is not used obviously
+                a = (argb[index] & 0xff000000) >> 24; // a is not used obviously
                 R = (argb[index] & 0xff0000) >> 16;
                 G = (argb[index] & 0xff00) >> 8;
                 B = (argb[index] & 0xff) >> 0;
@@ -339,8 +330,8 @@ public class BitmapToVideoEncoder {
 
                 yuv420sp[yIndex++] = (byte) ((Y < 0) ? 0 : ((Y > 255) ? 255 : Y));
                 if (j % 2 == 0 && index % 2 == 0) {
-                    yuv420sp[uIndex++] = (byte) ((U < 0) ? 0 : ((U > 255) ? 255 : U));
-                    yuv420sp[vIndex++] = (byte) ((V < 0) ? 0 : ((V > 255) ? 255 : V));
+                    yuv420sp[uvIndex++] = (byte) ((U < 0) ? 0 : ((U > 255) ? 255 : U));
+                    yuv420sp[uvIndex++] = (byte) ((V < 0) ? 0 : ((V > 255) ? 255 : V));
 
                 }
 
