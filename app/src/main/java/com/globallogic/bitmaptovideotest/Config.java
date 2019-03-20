@@ -28,8 +28,8 @@ public class Config {
     public static final int DISCOVER_PORT = 53515;
     public static final String DISCOVER_MESSAGE = "hello";
 
-    public static final int SELECTED_WIDTH =644;
-    public  static final int SELECTED_HEIGHT =500;
+    public static final int SELECTED_WIDTH =400;
+    public  static final int SELECTED_HEIGHT =300;
     public static final int DEFAULT_SCREEN_WIDTH = 1280;
     public static final int DEFAULT_SCREEN_HEIGHT = 720;
     public static final int DEFAULT_SCREEN_DPI = 320;

@@ -101,7 +101,7 @@ public class BitmapToVideoEncoder {
         Log.d(TAG, "Initialization complete. Starting encoder...");
 
         Completable.fromAction(() -> encode())
-                .subscribeOn(Schedulers.io())
+                .subscribeOn(Schedulers.newThread())
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe();
     }
@@ -177,6 +177,7 @@ public class BitmapToVideoEncoder {
             }
 
             if (argb == null) continue;
+            Log.w(TAG, "encode: mEncodeQueue.size()="+mEncodeQueue.size() );
             byte[] byteConvertFrame = getNV21(mWidth, mHeight, argb);
 
             long TIMEOUT_USEC = 500000;
@@ -232,6 +233,7 @@ public class BitmapToVideoEncoder {
             public void run() {
                 if (mSocketOutputStream != null) {
                     try {
+                        Log.w(TAG, "writeSampleData" );
                         mSocketOutputStream.write(buffer, offset, size);
                     } catch (IOException e) {
                         Log.e(TAG, "Failed to write data to socket, stop casting",e);

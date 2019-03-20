@@ -9,8 +9,8 @@
     <fragment
         android:id="@+id/fragment_view"
         android:name="com.globallogic.bitmaptovideotest.navigation.NavigationFragment"
-        android:layout_width="900dp"
-        android:layout_height="500dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
         android:layout_marginStart="8dp"
         android:layout_marginEnd="8dp"
         android:layout_marginBottom="8dp"

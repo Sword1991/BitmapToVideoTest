@@ -7,8 +7,8 @@
 
     <com.mapbox.services.android.navigation.ui.v5.NavigationView
         android:id="@+id/navigation_view_fragment"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
+        android:layout_width="400dp"
+        android:layout_height="300dp"
         android:layout_marginStart="128dp"
         android:layout_marginEnd="128dp"
         app:layout_constraintBottom_toBottomOf="parent"

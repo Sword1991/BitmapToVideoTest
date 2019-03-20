@@ -282,9 +282,9 @@ public class NavigationFragment extends Fragment implements OnNavigationReadyCal
 
     @Override
     public void onMilestoneEvent(RouteProgress routeProgress, String instruction, Milestone milestone) {
-        if(instruction!=null && instruction.length()>0) {
+        /*if(instruction!=null && instruction.length()>0) {
             sendTestMessage(instruction);
-        }
+        }*/
 
     }
 
@@ -297,14 +297,20 @@ public class NavigationFragment extends Fragment implements OnNavigationReadyCal
 
         if(bitmapReady) {
             bitmapReady=false;
-            captureBitmap(glSurfaceView, new BitmapReadyCallbacks() {
+            mHandler.post(new Runnable() {
                 @Override
-                public void onBitmapReady(int[] argb) {
-                    //Log.w(TAG, "onBitmapReady: ");
-                    bitmapToVideoEncoder.queueFrame(argb);
-                    bitmapReady=true;
+                public void run() {
+                    captureBitmap(glSurfaceView, new BitmapReadyCallbacks() {
+                        @Override
+                        public void onBitmapReady(int[] argb) {
+                            //Log.w(TAG, "onBitmapReady: ");
+                            bitmapToVideoEncoder.queueFrame(argb);
+                            bitmapReady=true;
+                        }
+                    });
                 }
             });
+
         }//else Log.w(TAG, "startSnapShot: BITMAP NOT READY" );
     }
 
@@ -315,14 +321,11 @@ public class NavigationFragment extends Fragment implements OnNavigationReadyCal
             public void run() {
                 EGL10 egl = (EGL10) EGLContext.getEGL();
                 GL10 gl = (GL10) egl.eglGetCurrentContext().getGL();
-                //final Bitmap snapshotBitmap = createBitmapFromGLSurface(0, 0, glSurfaceView.getWidth(), glSurfaceView.getHeight(), gl);
-                bitmapReadyCallbacks.onBitmapReady(createBitmapFromGLSurface(0, 0, glSurfaceView.getWidth(), glSurfaceView.getHeight(), gl));
-                /*getActivity().runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
+                //Log.w(TAG, "run: glSurfaceView.getWidth()="+glSurfaceView.getWidth()+" glSurfaceView.getHeight()="+glSurfaceView.getHeight() );
+                bitmapReadyCallbacks.onBitmapReady(
+                        createBitmapFromGLSurface(0, 0, glSurfaceView.getWidth(), glSurfaceView.getHeight(), gl)
+                );
 
-                    }
-                });*/
             }
         });
     }
