@@ -1,9 +1,13 @@
-package com.globallogic.bitmaptovideotest;
+package com.globallogic.bitmaptovideotest.navigation;
 
 import android.annotation.SuppressLint;
+import android.os.Environment;
 import android.util.Log;
 
+import java.io.BufferedReader;
 import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.net.InetAddress;
@@ -29,24 +33,30 @@ public class SocketHelper {
             "ENCODER: %5$s\r\n" +
             "\r\n";
 
-    public static final String mReceiverIp = "192.168.0.107";
+    public String mReceiverIp;
+    private static final String DEFAULT_RECEIVER_IP = "192.168.0.107";
+
+    public static final int VIEWER_PORT = 53515;
+
 
     public boolean createSocket() {
         Log.w(TAG, "createSocket" );
+        mReceiverIp=getReceiverIpString();
+
         Thread th = new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
                     InetAddress serverAddr = InetAddress.getByName(mReceiverIp);
-                    mSocket = new Socket(serverAddr, Config.VIEWER_PORT);
+                    mSocket = new Socket(serverAddr, VIEWER_PORT);
                     mSocketOutputStream = new DataOutputStream( mSocket.getOutputStream());
                     OutputStreamWriter osw = new OutputStreamWriter(mSocketOutputStream);
                     @SuppressLint("DefaultLocale")
                     String format =String.format(HTTP_MESSAGE_TEMPLATE,
-                            Config.SELECTED_WIDTH,
-                            Config.SELECTED_HEIGHT,
-                            BitmapToVideoEncoder.FRAME_RATE,
-                            BitmapToVideoEncoder.BIT_RATE,
+                            NavigationController.PRESENTATION_WIDTH,
+                            NavigationController.PRESENTATION_HEIGHT,
+                            NavigationController.PRESENTATION_FRAMERATE,
+                            NavigationController.PRESENTATION_BITRATE,
                             H264_ENCODER_NAME
                     );
                     Log.w(TAG, "format="+format );
@@ -107,6 +117,38 @@ public class SocketHelper {
         }
         mSocket = null;
         mSocketOutputStream = null;
+    }
+
+
+    private String getReceiverIpString(){
+        String result = DEFAULT_RECEIVER_IP;
+        File sdcard = Environment.getExternalStorageDirectory();
+        File file = new File(sdcard,"receiverip.txt");
+        StringBuilder text = new StringBuilder();
+        try {
+            BufferedReader br = new BufferedReader(new FileReader(file));
+            String line;
+
+            while ((line = br.readLine()) != null) {
+                text.append(line);
+                text.append('\n');
+            }
+            br.close();
+        }
+        catch (IOException e) {
+            //You'll need to add proper error handling here
+            Log.e(TAG, "getReceiverIpString: error" );
+            e.printStackTrace();
+        }
+        if(text.toString().length()>0){
+            result=text.toString().replace("\n","");
+        }else {
+            Log.w(TAG, "getReceiverIpString: ERROR using default receiver ip");
+        }
+
+        Log.w(TAG, "getReceiverIpString: ["+result+"]" );
+
+        return result;
     }
 
 }
