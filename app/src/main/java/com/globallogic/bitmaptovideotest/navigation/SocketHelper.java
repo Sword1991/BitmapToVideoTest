@@ -1,6 +1,5 @@
 package com.globallogic.bitmaptovideotest.navigation;
 
-import android.annotation.SuppressLint;
 import android.os.Environment;
 import android.util.Log;
 
@@ -9,7 +8,7 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
-import java.io.OutputStreamWriter;
+import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -34,39 +33,32 @@ public class SocketHelper {
             "\r\n";
 
     public String mReceiverIp;
-    private static final String DEFAULT_RECEIVER_IP = "192.168.0.107";
+    private static final String DEFAULT_RECEIVER_IP = "192.168.0.101";
 
     public static final int VIEWER_PORT = 53515;
+    public DatagramSocket udpSocket;
+    public InetAddress mReceiverIpAddr;
 
 
     public boolean createSocket() {
         Log.w(TAG, "createSocket" );
         mReceiverIp=getReceiverIpString();
+        Log.w(TAG, "getReceiverIpString:"+mReceiverIp );
+        try {
+            mReceiverIpAddr= InetAddress.getByName(mReceiverIp);
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+            Log.e(TAG, "createSocket: InetAddress.getByName error");
+            return false;
+        }
 
         Thread th = new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    InetAddress serverAddr = InetAddress.getByName(mReceiverIp);
-                    mSocket = new Socket(serverAddr, VIEWER_PORT);
-                    mSocketOutputStream = new DataOutputStream( mSocket.getOutputStream());
-                    OutputStreamWriter osw = new OutputStreamWriter(mSocketOutputStream);
-                    @SuppressLint("DefaultLocale")
-                    String format =String.format(HTTP_MESSAGE_TEMPLATE,
-                            NavigationController.PRESENTATION_WIDTH,
-                            NavigationController.PRESENTATION_HEIGHT,
-                            NavigationController.PRESENTATION_FRAMERATE,
-                            NavigationController.PRESENTATION_BITRATE,
-                            H264_ENCODER_NAME
-                    );
-                    Log.w(TAG, "format="+format );
-                    osw.write(format);
-                    osw.flush();
-                    mSocketOutputStream.flush();
+                    udpSocket = new DatagramSocket();
                     return;
-                } catch (UnknownHostException e) {
-                    e.printStackTrace();
-                } catch (IOException e) {
+                }  catch (IOException e) {
                     e.printStackTrace();
                 }
                 mSocket = null;
@@ -76,7 +68,7 @@ public class SocketHelper {
         th.start();
         try {
             th.join();
-            if (mSocket != null && mSocketOutputStream != null) {
+            if (udpSocket != null) {
                 return true;
             }
         } catch (InterruptedException e) {
@@ -117,6 +109,9 @@ public class SocketHelper {
         }
         mSocket = null;
         mSocketOutputStream = null;
+        if(udpSocket!=null){
+            udpSocket.close();
+        }
     }
 
 
@@ -149,6 +144,10 @@ public class SocketHelper {
         Log.w(TAG, "getReceiverIpString: ["+result+"]" );
 
         return result;
+    }
+
+    public void testRtp(){
+        
     }
 
 }

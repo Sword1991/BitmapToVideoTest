@@ -39,6 +39,7 @@ import com.mapbox.services.android.navigation.v5.routeprogress.RouteProgress;
 import com.mapbox.services.android.navigation.v5.routeprogress.RouteProgressState;
 
 import java.io.IOException;
+import java.net.DatagramPacket;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -414,9 +415,10 @@ public class NavigationController implements OnNavigationReadyCallback, Navigati
             @Override
             public void run() {
                 Log.w(TAG, "writeSampleData" );
-                if (socketHelper!= null && socketHelper.mSocketOutputStream != null) {
+                if (socketHelper!= null && socketHelper.udpSocket!=null) {
                     try {
-                        socketHelper.mSocketOutputStream.write(buffer, offset, size);
+                        DatagramPacket packet = new DatagramPacket(buffer, buffer.length, socketHelper.mReceiverIpAddr, SocketHelper.VIEWER_PORT);
+                        socketHelper.udpSocket.send(packet);
                     } catch (IOException e) {
                         Log.e(TAG, "Failed to write data to socket, stop casting",e);
                         e.printStackTrace();
